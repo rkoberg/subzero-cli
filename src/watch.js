@@ -36,7 +36,7 @@ export const resetDb = (containers, logger) => {
     _psql.on('close', (code) => {
       if(code == 0){
         if(containers['postgrest']) {sendHUP(containers['postgrest'].name);}
-        if(containers['openresty']) {sendHUP(containers['openresty'].name);}
+        if(containers['client']) {sendHUP(containers['client'].name);}
       }
     })
   });
@@ -61,8 +61,8 @@ export const runWatcher = (containers, logger, watcherReadyCb, reloadStartCb, re
     if(path.endsWith('.sql')){
       resetDb(containers, logger).on('close', reloadEndCb);
     }else{
-      if(containers['openresty'])
-        sendHUP(containers['openresty'].name).on('close', reloadEndCb);
+      if(containers['client'])
+        sendHUP(containers['client'].name).on('close', reloadEndCb);
       else
         reloadEndCb();
     }

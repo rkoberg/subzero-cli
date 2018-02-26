@@ -12,7 +12,7 @@ import {
   DOCKER_IMAGE,
   USE_DOCKER_IMAGE,
   MIGRATIONS_DIR,
-  OPENRESTY_DIR,
+  CLIENT_DIR,
   JAVA_CMD
 } from './env.js';
 
@@ -22,7 +22,7 @@ export const runCmd = (cmd, params, options = {}, silent = false, exit_on_error 
     let w = (options && options.cwd) ? options.cwd.replace(APP_DIR, DOCKER_APP_DIR) : DOCKER_APP_DIR;
     let e = (options && options.env) ? Object.keys(options.env).reduce(function(acc, key) {
       acc.push('-e')
-      acc.push(key + '=' + options.env[key].replace(APP_DIR, DOCKER_APP_DIR)); 
+      acc.push(key + '=' + options.env[key].replace(APP_DIR, DOCKER_APP_DIR));
       return acc;
     }, []):[];
     let u = []
@@ -55,7 +55,7 @@ export const checkPostgresConnection = (connection_string, pass, exit_on_error =
   var env = Object.create( process.env );
   env.PGPASSWORD = pass;
   const random_number = Math.floor(Math.random() * 100).toString();
-  const params = ['--quiet', '--tuples-only', '-c', `SELECT ${random_number}`, connection_string] 
+  const params = ['--quiet', '--tuples-only', '-c', `SELECT ${random_number}`, connection_string]
   let result = runCmd(PSQL_CMD, params, { env: env }, true, false).stdout.toString().replace(/\s/g,'');
   if(random_number !== result){
     console.log(" ");
@@ -95,10 +95,10 @@ export const checkMigrationsInitiated = () => {
   }
 }
 
-export const checkOpenrestyInitiated = () => {
-  if( !(dirExists(OPENRESTY_DIR) && fileExists(`${OPENRESTY_DIR}/Dockerfile`)) ){
-    console.log("Error: ".red + "Dockerfile for custom OpenResty image missing");
-    console.log(`Please create ${OPENRESTY_DIR}/Dockerfile`);
+export const checkClientInitiated = () => {
+  if( !(dirExists(CLIENT_DIR) && fileExists(`${CLIENT_DIR}/package.json`)) ){
+    console.log("Error: ".red + "package.json for custom Client image missing");
+    console.log(`Please create ${CLIENT_DIR}/package.json`);
     process.exit(0);
   }
 }

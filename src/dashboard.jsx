@@ -12,9 +12,9 @@ import {highlight} from 'cli-highlight';
 import {StringDecoder} from 'string_decoder';
 import Spinner from './spinner.js';
 import {
-    APP_DIR,
-    LOG_LENGTH,
-    WATCH_PATTERNS
+  APP_DIR,
+  LOG_LENGTH,
+  WATCH_PATTERNS
 } from './env.js';
 
 import {resetDb, runWatcher, dockerContainers} from './watch.js';
@@ -46,7 +46,7 @@ class Dashboard extends Component {
     dashboard.on("element keypress", (el, ch, key) => this.handleKeyPress(key.full));
 
     //start log tail procs
-    Object.keys(containers).map(key => {
+    Object.keys(containers).filter(key => key !== 'client').map(key => {
       this.startLogTail(key)
     })
 
@@ -54,43 +54,54 @@ class Dashboard extends Component {
   }
   stopWatcher = () => {
     const {activeContainer} = this.state;
-    const logger = this.refs['log_'+activeContainer];
     if(this.watcher){ this.watcher.close(); this.watcher = null;}
     this.setState({watcherRunning:false});
-    logger.log('Stopping watcher');
+    if (activeContainer !== 'client') {
+      const logger = this.refs['log_' + activeContainer];
+      logger.log('Stopping watcher');
+    }
   }
   startWatcher = () => {
+
     const watcherReady = () => {
-      const logger = this.refs['log_'+this.state.activeContainer];
-      logger.log('Watching ' + WATCH_PATTERNS.map(p => p.replace(APP_DIR + '/','')).join(', ') + ' for changes.');
-      logger.log('in ' + APP_DIR);
+      if (this.state.activeContainer !== 'client') {
+        const logger = this.refs['log_' + this.state.activeContainer];
+        logger.log('Watching ' + WATCH_PATTERNS.map(p => p.replace(APP_DIR + '/', '')).join(', ') + ' for changes.');
+        logger.log('in ' + APP_DIR);
+      }
     }
     const reloadStart = relPath => {
-      const logger = this.refs['log_'+this.state.activeContainer];
-      logger.log(`${relPath} changed`);
-      logger.log('Starting code reload ------------------------');
+      if (this.state.activeContainer !== 'client') {
+        const logger = this.refs['log_' + this.state.activeContainer];
+        logger.log(`${relPath} changed`);
+        logger.log('Starting code reload ------------------------');
+      }
       this.refs['watcherSpinner'].start();
     }
     const reloadEnd = () => {
-      const logger = this.refs['log_'+this.state.activeContainer];
       this.refs['watcherSpinner'].stop();
-      logger.log('Ready ---------------------------------------');
+      if (this.state.activeContainer !== 'client') {
+        const logger = this.refs['log_' + this.state.activeContainer];
+        logger.log('Ready ---------------------------------------');
+      }
     }
     this.setState({watcherRunning:true});
     if(this.watcher){ this.watcher.close(); }
     const {containers, activeContainer} = this.state;
     this.watcher = runWatcher(containers,
-                              this.refs['log_' + activeContainer],
-                              watcherReady, reloadStart, reloadEnd);
+      this.refs['log_' + activeContainer],
+      watcherReady, reloadStart, reloadEnd);
   }
   startLogTail = (key, timestamp) => {
     const {containers} = this.state;
-    const logger = this.refs['log_'+key];
     const printer = key == 'db' ? printSQL : printLog;
     timestamp = timestamp ? timestamp : 0;
-    if (containers[key].logProc) { containers[key].logProc.kill() }
-    containers[key].logProc = proc.exec(`docker logs --tail 500 --since ${timestamp} -f ${containers[key].name} 2>&1`);
-    containers[key].logProc.stdout.on('data', data => logger.log(printer(data)));
+    if (key !== 'client' || key != '') {
+      if (containers[key].logProc) { containers[key].logProc.kill() }
+      const logger = this.refs['log_'+key];
+      containers[key].logProc = proc.exec(`docker logs --tail 500 --since ${timestamp} -f ${containers[key].name} 2>&1`);
+      containers[key].logProc.stdout.on('data', data => logger.log(printer(data)));
+    }
   }
   selectContainer = (idx) => {
     const {activeContainer, containerOrder} = this.state;
@@ -101,59 +112,67 @@ class Dashboard extends Component {
   }
   restartContainer = (key) => {
     const container = this.state.containers[key];
-    const logger = this.refs['log_'+key];
-    logger.log(`Restarting ${container.title} container ...`)
     proc.spawn('docker',['restart', container.name]).on('close', (code) => {
-      logger.log('Done');
-      this.startLogTail(key, Math.floor(new Date() / 1000));
+      if (key !== 'client') {
+        const logger = this.refs['log_'+key];
+        logger.log(`Restarting ${container.title} container ...`)
+        logger.log('Done');
+        this.startLogTail(key, Math.floor(new Date() / 1000));
+      }
     });
   }
   clearLog = (key) => {
-    const containerName = containers[key].name;
-    const logFile = proc.execSync('docker inspect -f "{{.LogPath}}" ' + containerName ).toString('utf8').trim()
-    fs.truncateSync(logFile, 0)
+    if (key !== 'client') {
+      const containerName = containers[key].name;
+      const logFile = proc.execSync('docker inspect -f "{{.LogPath}}" ' + containerName ).toString('utf8').trim()
+      fs.truncateSync(logFile, 0)
+    }
   }
   handleKeyPress = (key) => {
     const {activeContainer, containerOrder, containers, watcherRunning} = this.state,
-          logger = this.refs['log_'+activeContainer];
+      logger = this.refs['log_'+activeContainer];
     switch(key) {
-        case 'left':
-        case 'right':
-          const total = containerOrder.length;
-          let idx = containerOrder.indexOf(activeContainer)
-          if(key == "left") { idx = (idx - 1 == -1)?(total - 1):(idx - 1); }
-          if(key == "right") { idx = (idx + 1 == total)?0:(idx + 1); }
-          this.selectContainer(idx);
-          break;
-        case 'c':// 'Clear log': {keys:['c']},
-          //this.clearLog(activeContainer);
+      case 'left':
+      case 'right':
+        const total = containerOrder.length;
+        let idx = containerOrder.indexOf(activeContainer)
+        if(key == "left") { idx = (idx - 1 == -1)?(total - 1):(idx - 1); }
+        if(key == "right") { idx = (idx + 1 == total)?0:(idx + 1); }
+        this.selectContainer(idx);
+        break;
+      case 'c':// 'Clear log': {keys:['c']},
+        //this.clearLog(activeContainer);
+        if (activeContainer !== 'client') {
           logger.setContent('');
-          break;
-        case 't':// 'Restart this container': {keys:['t']}, this.restartContainer();
-          this.restartContainer(activeContainer);
-          break;
-        case 'a':// 'Restart all containers'
-          Object.keys(containers).map(k => this.restartContainer(k));
-          break;
-        case 'w':// 'Toggle Watcher'
-          watcherRunning ? this.stopWatcher() : this.startWatcher();
-          break;
-        case 'r':// 'Reset DB'
-          resetDb(containers, logger);
-          break;
-        case 'h':// 'Help': {keys:['?']}, this.hideHelp();
-          this.setState({showHelp: !this.state.showHelp})
-          break;
-        // Quit program
-        case 'q':
-        case 'escape':
-        case 'C-c':
+        }
+        break;
+      case 't':// 'Restart this container': {keys:['t']}, this.restartContainer();
+        this.restartContainer(activeContainer);
+        break;
+      case 'a':// 'Restart all containers'
+        Object.keys(containers).map(k => this.restartContainer(k));
+        break;
+      case 'w':// 'Toggle Watcher'
+        watcherRunning ? this.stopWatcher() : this.startWatcher();
+        break;
+      case 'r':// 'Reset DB'
+        resetDb(containers, logger);
+        break;
+      case 'h':// 'Help': {keys:['?']}, this.hideHelp();
+        this.setState({showHelp: !this.state.showHelp})
+        break;
+      // Quit program
+      case 'q':
+      case 'escape':
+      case 'C-c':
+        if (activeContainer !== 'client') {
           Object.keys(containers).map(c => containers[c].logProc.kill());
-          if(this.watcher){ this.watcher.close();}
-          process.exit(0);
-          break;
-        default:
-          this.selectContainer(parseInt(key, 10) - 1);
+        }
+        if(this.watcher){ this.watcher.close();}
+        process.exit(0);
+        break;
+      default:
+        this.selectContainer(parseInt(key, 10) - 1);
     }
   }
 
@@ -218,7 +237,7 @@ class Dashboard extends Component {
         <listbar ref="topMenu"  top={0} items={containerTitles} class={topMenuStyle} />
         {containerOrder.map( key =>
           <log key={key} hidden={key != activeContainer} focused={key == activeContainer}
-            ref={'log_' + key} top={1} label="Logs" class={logWindowStyle} />
+               ref={'log_' + key} top={1} label="Logs" class={logWindowStyle} />
         )}
         <listbar ref="bottomMenu" bottom={0} height={1} width="100%-2" left={2} autoCommandKeys={false} commands={{
           'Clear log': {keys:['c']},

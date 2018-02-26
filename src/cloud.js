@@ -14,7 +14,7 @@ import {config} from 'dotenv';
 import proc from 'child_process';
 import {
   runCmd,
-  checkOpenrestyInitiated,
+  checkClientInitiated,
   fileExists,
   dirExists,
   notEmptyString,
@@ -25,7 +25,7 @@ import {
 } from './common.js';
 import {
   APP_DIR,
-  OPENRESTY_DIR,
+  CLIENT_DIR,
   COMPOSE_PROJECT_NAME
 } from './env.js';
 
@@ -89,16 +89,16 @@ const createApplication = (token, app, cb) => {
     certificate_file = app.certificate_file;
     certificate_private_key_file = app.certificate_private_key_file;
 
-    
+
     delete app['certificate_file'];
     delete app['certificate_private_key_file'];
     app.certificate_body = fs.readFileSync(certificate_file, 'utf8');
     app.certificate_private_key = fs.readFileSync(certificate_private_key_file, 'utf8');
   }
   delete app['uploadCertificate'];
-  
+
   request
-    .post(`${SERVER_URL}/applications?select=id,name,domain,openresty_repo,db_service_host,db_location,db_admin,db_host,db_port,db_name,db_schema,db_authenticator,db_anon_role,max_rows,pre_request,version,openresty_image_type`)
+    .post(`${SERVER_URL}/applications?select=id,name,domain,client,db_service_host,db_location,db_admin,db_host,db_port,db_name,db_schema,db_authenticator,db_anon_role,max_rows,pre_request,version,client_image_type`)
     .send({...app})
     .set("Authorization", `Bearer ${token}`)
     .set("Prefer", "return=representation")
@@ -183,7 +183,7 @@ const loadEnvFile = () => {
 
 const listApplications = (token, cb) => {
   request
-    .get(`${SERVER_URL}/applications?select=id,db_admin,db_anon_role,db_authenticator,db_host,db_location,db_name,db_port,db_service_host,db_schema,openresty_repo,domain,max_rows,name,pre_request,version`)
+    .get(`${SERVER_URL}/applications?select=id,db_admin,db_anon_role,db_authenticator,db_host,db_location,db_name,db_port,db_service_host,db_schema,client_repo,domain,max_rows,name,pre_request,version`)
     .set("Authorization", `Bearer ${token}`)
     .end((err, res) => {
       if(err && typeof res == 'undefined'){console.log("%s".red, err.toString());return;}
@@ -226,7 +226,7 @@ const deleteApplication = (id, token) => {
 
 const getApplication = (id, token, cb) => {
   request
-    .get(`${SERVER_URL}/applications?id=eq.${id}&select=id,status,db_admin,db_anon_role,db_authenticator,db_host,db_location,db_name,db_port,db_service_host,db_schema,openresty_repo,domain,max_rows,name,pre_request,version`)
+    .get(`${SERVER_URL}/applications?id=eq.${id}&select=id,status,db_admin,db_anon_role,db_authenticator,db_host,db_location,db_name,db_port,db_service_host,db_schema,client_repo,domain,max_rows,name,pre_request,version`)
     .set("Authorization", `Bearer ${token}`)
     .set("Accept", "application/vnd.pgrst.object")
     .end((err, res) => {
@@ -242,7 +242,7 @@ const getApplication = (id, token, cb) => {
     });
 }
 
-const deployApplication = async (appId, app_conf, db_admin, db_admin_pass, token, buildOpenresty, runSqitchMigrations, usingSubzeroCloudRegistry) => {
+const deployApplication = async (appId, app_conf, db_admin, db_admin_pass, token, buildClient, runSqitchMigrations, usingSubzeroCloudRegistry) => {
   let {host, port} = (() => {
     if(app_conf.db_location == 'container')
       return digSrv(app_conf.db_service_host);
@@ -258,16 +258,16 @@ const deployApplication = async (appId, app_conf, db_admin, db_admin_pass, token
     checkPostgresConnection(`postgres://${pg_user}@${pg_host}:${pg_port}/${app_conf.db_name}`, pg_pass);
   }
 
-  if(buildOpenresty){
-    console.log("Building and deploying openresty container");
+  if(buildClient){
+    console.log("Building and deploying client container");
     if(usingSubzeroCloudRegistry)
       await loginToDocker(token);
-    runCmd("docker", ["build", "-t", "openresty", "./openresty"], {}, false, true);
-    runCmd("docker", ["tag", "openresty", `${app_conf.openresty_repo}:${app_conf.version}`], {}, false, true);
-    runCmd("docker", ["push", `${app_conf.openresty_repo}:${app_conf.version}`], {}, false, true);
+    runCmd("docker", ["build", "-t", "client", "./client"], {}, false, true);
+    runCmd("docker", ["tag", "client", `${app_conf.client_repo}:${app_conf.version}`], {}, false, true);
+    runCmd("docker", ["push", `${app_conf.client_repo}:${app_conf.version}`], {}, false, true);
   }
   else{
-    console.log("Skipping OpenResty image building")
+    console.log("Skipping Client image building")
   }
 
   if(runSqitchMigrations){
@@ -287,7 +287,7 @@ const deployApplication = async (appId, app_conf, db_admin, db_admin_pass, token
 const updateApplication = (id, token, app) => {
   delete app['id'];
   delete app['db_service_host'];
-  delete app['openresty_repo'];
+  delete app['client_repo'];
   if(app.certificate_file){
     app.certificate_body = fs.readFileSync(app.certificate_file, 'utf8');
     app.certificate_private_key = fs.readFileSync(app.certificate_private_key_file, 'utf8');
@@ -344,7 +344,7 @@ const digSrv = (serviceHost, failOnError = true) => {
         process.exit(0);
       }
     }
-    
+
   }catch(e){
     if(failOnError){
       console.log(e.stdout.toString('utf8'));
@@ -640,13 +640,13 @@ program.command('app-create')
       },
       {
         type: 'confirm',
-        message: "Use custom OpenRestyImage",
-        name: 'openresty_image_type',
-        default: fileExists(`${OPENRESTY_DIR}/Dockerfile`)
+        message: "Use custom ClientImage",
+        name: 'client_image_type',
+        default: fileExists(`${CLIENT_DIR}/package.json`)
       }
     ]).then(answers => {
 
-      answers.openresty_image_type = answers.openresty_image_type?'custom':'default';
+      answers.client_image_type = answers.client_image_type?'custom':'default';
 
       let app = answers;
       inquirer.prompt([
@@ -695,23 +695,25 @@ program.command('app-delete')
 program.command('app-deploy')
   .option("-a, --dba [dba]", "Database administrator account(only needed for external db)")
   .option("-p, --password [password]", "Database administrator account password")
-  .description('Deploy a subzero application, this will run the latest migrations and push the latest openresty image')
+  .description('Deploy a subzero application, this will run the latest migrations and push the latest client image')
   .action(options => {
+    console.log('app-deploy options', options);
     checkIsAppDir();
-    const app_conf = readSubzeroAppConfig(),
-          usingSubzeroCloudRegistry = app_conf.openresty_repo && app_conf.openresty_repo.startsWith("registry.subzero.cloud"),
+    const app_conf = readSubzeroAppConfig();
+    console.log('app-deploy app_conf', app_conf);
+    const usingSubzeroCloudRegistry = app_conf.client_repo && app_conf.client_repo.startsWith("registry.subzero.cloud"),
           token = usingSubzeroCloudRegistry?readToken():null,
           appId = usingSubzeroCloudRegistry?readSubzeroAppId():null,
           runSqitchMigrations = dirExists(`${APP_DIR}/db`),
-          buildOpenresty = !app_conf.openresty_image_type || app_conf.openresty_image_type === 'custom',
+          buildClient = !app_conf.client_image_type || app_conf.client_image_type === 'custom',
           dbIsExternal = app_conf.db_location == "external",
           {dba, password} = options,
           noOptionsSpecified = !dba && !password;
     if(runSqitchMigrations){
       checkMigrationsInitiated();
     }
-    if(buildOpenresty){
-      checkOpenrestyInitiated()
+    if(buildClient){
+      checkClientInitiated()
     }
     if(noOptionsSpecified){
       inquirer.prompt([
@@ -731,7 +733,7 @@ program.command('app-deploy')
           validate: val => notEmptyString(val)?true:"Cannot be empty"
         }
       ]).then(answers => {
-        deployApplication(appId, app_conf, answers.db_admin, answers.db_admin_pass, token, buildOpenresty, runSqitchMigrations, usingSubzeroCloudRegistry);
+        deployApplication(appId, app_conf, answers.db_admin, answers.db_admin_pass, token, buildClient, runSqitchMigrations, usingSubzeroCloudRegistry);
       });
     }else{
       if(dbIsExternal && !notEmptyString(dba))
@@ -740,7 +742,7 @@ program.command('app-deploy')
       if(!notEmptyString(password))
         console.log("password: cannot be empty");
       else
-        deployApplication(appId, app_conf, dba, password, token, buildOpenresty, runSqitchMigrations, usingSubzeroCloudRegistry);
+        deployApplication(appId, app_conf, dba, password, token, buildClient, runSqitchMigrations, usingSubzeroCloudRegistry);
   }
   });
 

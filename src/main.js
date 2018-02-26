@@ -28,8 +28,8 @@ program
 //   console.log('  Env vars that control behaviour and their default values:');
 //   console.log('');
 //   console.log('    LOG_LENGTH: 1000');
-//   console.log('    APGDIFF_JAR_PATH: /usr/local/bin/apgdiff.jar') 
-//   console.log('    SQITCH_CMD: sqitch') 
+//   console.log('    APGDIFF_JAR_PATH: /usr/local/bin/apgdiff.jar')
+//   console.log('    SQITCH_CMD: sqitch')
 //   console.log('    PSQL_CMD: psql');
 //   console.log('    PG_DUMP_CMD: pg_dump');
 //   console.log('    PG_DUMPALL_CMD: pg_dumpall');
@@ -59,6 +59,10 @@ program
           },
           {
             name: 'subzero-starter-kit (REST & GraphQL)',
+            value: 'https://github.com/subzerocloud/subzero-starter-kit/archive/master.tar.gz'
+          },
+          {
+            name: 'ruler-kit (REST & NextJS)',
             value: 'https://github.com/subzerocloud/subzero-starter-kit/archive/master.tar.gz'
           }
         ]
